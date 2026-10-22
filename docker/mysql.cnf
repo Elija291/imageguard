@@ -1,0 +1,7 @@
+[mysqld]
+skip-networking
+mysqlx=0
+local-infile=0
+symbolic-links=0
+max_connections=30
+innodb_buffer_pool_size=128M
