@@ -1,6 +1,6 @@
 # ImageGuard — secure raw-PHP AI image detection
 
-A coursework project using **one Ubuntu Docker container**, **Apache**, **MySQL** and **plain PHP**. No PHP framework, Composer dependency, Docker Compose, or Python inference service is used by the application.
+A project using **one Ubuntu Docker container**, **Apache**, **MySQL** and **plain PHP**. No PHP framework, Composer dependency, Docker Compose, or Python inference service is used by the application.
 
 ## Start here
 
