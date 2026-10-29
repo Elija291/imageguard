@@ -18,7 +18,7 @@ chmod 600 .env
 nano .env
 ```
 
-Set `APP_PASSWORD` to a unique password of at least 16 characters. Generate one locally with `openssl rand -hex 24` if available. Replace the example password. This is the shared workspace password, not a MySQL password.
+Set `APP_PASSWORD` to a unique password of 16–72 bytes for the reserved **admin** username. Generate one locally with `openssl rand -hex 24` if available. Replace the example password. This is the administrator password, not a MySQL password. Public registration always creates an ordinary user.
 
 Create your own account at https://dashboard.sightengine.com/ and copy its API user and secret into `.env`:
 
@@ -55,7 +55,7 @@ docker logs --tail 80 imageguard
 docker inspect --format='{{.State.Health.Status}}' imageguard
 ```
 
-Open **http://localhost:8080**, enter your workspace password, choose a picture, tick the external-processing consent checkbox, and select **Analyse image**.
+Open **http://localhost:8080**, sign in as `admin` with `APP_PASSWORD` (or create a user account), choose a picture, tick the external-processing consent checkbox, and select **Analyse image**.
 
 If Docker runs on your Ubuntu server, access it from your own computer through SSH (replace the host with its Tailscale IP or hostname):
 
@@ -73,7 +73,7 @@ Then open http://localhost:8080 on that computer. Keep the terminal open. No cha
 | Greater than 0.20 and less than 0.80 | Uncertain |
 | 0.80–1.00 | Likely AI-generated |
 
-These are explicit demonstration thresholds, not measured accuracy or a guarantee of authenticity. A score is the provider's estimate. Original images are not stored in MySQL; the app records a digest, dimensions, type, score, label and time. History belongs to the current browser session, so signing out or expiry makes previous history inaccessible to that browser. Records older than seven days are pruned when a subsequent analysis succeeds; this is not a strict scheduled deletion service.
+These are explicit demonstration thresholds, not measured accuracy or a guarantee of authenticity. A score is the provider's estimate. Original images are not stored in MySQL; the app records a digest, dimensions, type, score, label and time. History belongs to the signed-in account and remains available after signing out and back in. Records older than seven days are pruned when a subsequent analysis succeeds; this is not a strict scheduled deletion service.
 
 ### 4. Use the SynthID hint correctly
 
@@ -93,23 +93,42 @@ SynthID is an embedded-watermark system. A non-detection cannot prove that an im
 | `docker/php.ini` | Upload/session/resource and PHP hardening |
 | `docker/supervisord.conf` | Run Apache and MySQL in the required single container |
 | `app/bootstrap.php` | Sessions, CSRF helpers, PDO and atomic rate limits |
+| `app/accounts.php` | Registration, password verification, account status and admin actions |
 | `app/detector.php` | Real image validation and fixed-endpoint API client |
 | `app/health.php` | Container health check for database and web service |
 | `public/index.php` | Login, consent, upload, results and history |
 | `public/style.css` | Responsive interface; no third-party scripts/fonts |
 | `tests/unit.php` | Deterministic detector/parser/upload tests |
+| `tests/accounts.php` | Isolated MySQL account, session-revocation and migration tests |
 | `tests/smoke.sh` | Basic container HTTP and hardening checks |
 | `docs/SECURITY.md` | Threat model and review checklist |
 | `docs/VALIDATION.md` | Actual verification status and acceptance checks |
+
+## User accounts and administrator
+
+- Visitors choose a username (3–32 ASCII letters, digits or underscores) and their own password (16–72 bytes). Usernames are case-insensitive. Passwords are hashed, never stored in plaintext.
+- Sign in as **admin**, using `APP_PASSWORD` from your private `.env`. Select **Manage users** to block, unblock or delete ordinary accounts. Admin cannot be blocked or deleted through this screen.
+- Blocking invalidates existing sessions on their next request and prevents login. Unblocking does not restore old sessions: the user must sign in again. Requests already sent to Sightengine cannot be recalled, but blocked/deleted users cannot save the returning result.
+- Deleting requires confirmation and removes the account and its saved analysis history. A deleted username may be registered again with a new account ID; old sessions cannot access it. Use blocking to retain a disabled account. Public signup cannot prevent the same person registering a different username.
+- All accounts use the administrator's server-side Sightengine credentials. No user form exposes or accepts provider credentials. Existing image validation, classification and global API budget are unchanged.
+- Registration is limited to 3 attempts per source IP per hour and 30 globally per hour. Existing login/analysis limits remain in place. Behind a proxy, IP-based limits are shared until trusted-proxy handling is configured; do not trust arbitrary forwarded headers.
+- This change does not add email verification, password-reset email or additional administrator creation.
+
+### Upgrade an existing deployment
+
+Back up the MySQL volume first. Build the updated source as a new image tag (for example `imageguard:2`), then recreate the container with the **same database volume and private environment file**. Do not remove the volume. The old `elijsam/imageguard:1` image does not contain these changes.
+
+Startup creates the users table and seeds `admin` automatically. Existing analyses and rate-limit counters remain; old browser-session history is not automatically assigned to any new user. Old shared-password sessions must sign in again. Changing `APP_PASSWORD` and recreating the container updates only the admin password and invalidates previous admin sessions. Ordinary users and their password hashes survive recreation. New admin passwords must be 16–72 bytes, including when upgrading.
 
 ## Tests
 
 ```bash
 docker exec imageguard php /opt/imageguard/tests/unit.php
+docker exec imageguard php /opt/imageguard/tests/accounts.php
 bash tests/smoke.sh
 ```
 
-Tests do not send images to the API or consume quota. For end-to-end verification use images you own: one original camera photograph and one known generated image. A wrong classification is a model limitation, not a reason to hard-code results. Test failure handling with missing/invalid keys too.
+The account test creates a randomly named temporary MySQL database, tests registration and administrative actions, and drops only that test database afterward. Run it as the container's default root user. Tests do not send images to the API or consume quota. For end-to-end verification use images you own: one original camera photograph and one known generated image. A wrong classification is a model limitation, not a reason to hard-code results. Test failure handling with missing/invalid keys too.
 
 ## Operations
 
@@ -125,7 +144,7 @@ docker rm imageguard
 
 Keep the volume to preserve stored metadata and rate-limit buckets. This project intentionally has no web-based SQL console, admin shell or phpMyAdmin.
 
-For a remote public deployment, put an HTTPS reverse proxy in front of the localhost binding and set `COOKIE_SECURE=1` before recreating the container. Do not directly expose the HTTP listener with a shared password. Proxy addresses are not blindly trusted: the app uses `REMOTE_ADDR`; behind a proxy, visitors share its rate-limit bucket unless a carefully constrained real-IP configuration is added.
+For a remote public deployment, put an HTTPS reverse proxy in front of the localhost binding and set `COOKIE_SECURE=1` before recreating the container. Keep the HTTP listener private behind the proxy; public visitors must use HTTPS. Proxy addresses are not blindly trusted: the app uses `REMOTE_ADDR`; behind a proxy, visitors share its rate-limit bucket unless a carefully constrained real-IP configuration is added.
 
 Rebuild regularly with `docker build --pull --no-cache -t imageguard:1 .` for OS security updates. Runtime API settings are not copied into the image. Docker administrators can still inspect container environment variables; protect host access.
 

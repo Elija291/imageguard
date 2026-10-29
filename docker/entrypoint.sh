@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 umask 027
 : "${APP_PASSWORD:?Set APP_PASSWORD in your private .env file (at least 16 characters).}"
-if [ "${#APP_PASSWORD}" -lt 16 ]; then echo 'APP_PASSWORD must be at least 16 characters.' >&2; exit 1; fi
+if [ "${#APP_PASSWORD}" -lt 16 ] || [ "$(printf %s "$APP_PASSWORD" | wc -c)" -gt 72 ]; then echo 'APP_PASSWORD must be 16–72 bytes.' >&2; exit 1; fi
 if [ "$APP_PASSWORD" = 'CHANGE-THIS-TO-A-LONG-RANDOM-PASSWORD' ]; then echo 'Replace the example APP_PASSWORD first.' >&2; exit 1; fi
 install -d -o mysql -g mysql -m 750 /run/mysqld /var/lib/mysql
 chmod 755 /run/mysqld

@@ -12,15 +12,18 @@ $db->exec("CREATE TABLE IF NOT EXISTS analyses (
 $db->exec("CREATE TABLE IF NOT EXISTS rate_limits (
  bucket CHAR(64) PRIMARY KEY, hits INT UNSIGNED NOT NULL, expires BIGINT NOT NULL, INDEX expiry(expires)
 )");
+require_once __DIR__.'/app/accounts.php';
+initializeAccounts($db, getenv('APP_PASSWORD') ?: '');
 $password = bin2hex(random_bytes(32));
 $db->exec("CREATE USER IF NOT EXISTS 'imageguard'@'localhost' IDENTIFIED BY '$password'");
 $db->exec("ALTER USER 'imageguard'@'localhost' IDENTIFIED BY '$password'");
 $db->exec("GRANT SELECT, INSERT, DELETE ON imageguard.analyses TO 'imageguard'@'localhost'");
 $db->exec("GRANT SELECT, INSERT, UPDATE, DELETE ON imageguard.rate_limits TO 'imageguard'@'localhost'");
+$db->exec("GRANT SELECT, INSERT, UPDATE, DELETE ON imageguard.users TO 'imageguard'@'localhost'");
 $old = is_file('/var/lib/mysql/imageguard-rate-key') ? trim(file_get_contents('/var/lib/mysql/imageguard-rate-key')) : bin2hex(random_bytes(32));
 file_put_contents('/var/lib/mysql/imageguard-rate-key', $old); chmod('/var/lib/mysql/imageguard-rate-key', 0600);
 $config = [
- 'db_password' => $password, 'password_hash' => password_hash(getenv('APP_PASSWORD'), PASSWORD_DEFAULT),
+ 'db_password' => $password, 'dummy_password_hash' => password_hash(bin2hex(random_bytes(32)), PASSWORD_DEFAULT),
  'rate_key' => $old, 'api_user' => getenv('SIGHTENGINE_API_USER') ?: '',
  'api_secret' => getenv('SIGHTENGINE_API_SECRET') ?: '', 'secure_cookie' => getenv('COOKIE_SECURE') === '1',
  'daily_limit' => max(1, min(10000, (int)(getenv('DAILY_API_LIMIT') ?: 100)))
