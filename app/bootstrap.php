@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__.'/detector.php';
+require_once __DIR__.'/accounts.php';
 $config = require '/run/imageguard/config.php';
 function db(): PDO {
     global $config;
@@ -40,4 +41,5 @@ if (isset($_SESSION['last_seen']) && time() - $_SESSION['last_seen'] > 1800) {
 }
 $_SESSION['last_seen']=time();
 $_SESSION['csrf'] ??= bin2hex(random_bytes(32));
-$_SESSION['owner'] ??= bin2hex(random_bytes(32));
+// Legacy shared-password sessions do not authorize access to user accounts.
+unset($_SESSION['auth'], $_SESSION['owner']);
